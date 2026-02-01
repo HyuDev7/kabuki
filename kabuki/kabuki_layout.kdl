@@ -1,0 +1,49 @@
+// Kabuki Phase 1 レイアウト
+// 統括エージェント + ダッシュボード + 実装エージェント
+
+session_name "kabuki"
+
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+
+    tab name="🎭 Kabuki" {
+        pane split_direction="vertical" {
+            // 左側: 統括エージェント（自動起動）
+            pane name="統括 (Orchestrator)" size="60%" {
+                focus true
+                command "bash"
+                args "-c" "cd /Users/ryu/projects/kabuki/kabuki && ./agents/start_orchestrator_agent.sh"
+            }
+
+            // 右側: ダッシュボード
+            pane name="📊 Dashboard" {
+                command "bash"
+                args "-c" "cd /Users/ryu/projects/kabuki/kabuki && ./dashboard_watcher.sh"
+            }
+        }
+
+        // 下部: 実装エージェント（起動時は空）
+        pane split_direction="horizontal" name="実装 (Implementer)" size="40%" {
+            cwd "/Users/ryu/projects/kabuki/kabuki"
+        }
+    }
+
+    tab name="🔧 Orchestrator" {
+        pane name="Orchestrator Log" {
+            command "bash"
+            args "-c" "cd /Users/ryu/projects/kabuki/kabuki && tail -f logs/orchestrator.log"
+        }
+        pane name="Completions" {
+            command "bash"
+            args "-c" "cd /Users/ryu/projects/kabuki/kabuki && tail -f .orchestrator/completions.jsonl | jq -C"
+        }
+    }
+}

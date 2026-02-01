@@ -1,0 +1,20 @@
+# Kabuki状態管理
+kabuki/.orchestrator/state.json
+kabuki/.orchestrator/current_task_id.txt
+kabuki/tasks/*
+kabuki/logs/*
+
+# 実装ディレクトリの中間ファイル
+kabuki/implementation/*/node_modules/
+kabuki/implementation/*/.env
+kabuki/implementation/*/.DS_Store
+
+# システムファイル
+.DS_Store
+*.log
+
+# ダッシュボードのランタイム更新
+kabuki/dashboard.md
+
+# エージェントのランタイムファイル
+kabuki/.agent_*

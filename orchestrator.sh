@@ -1,0 +1,89 @@
+#!/bin/bash
+# Kabuki Orchestrator - Zellij統合版
+# state.jsonを監視してエージェントを自動起動
+
+set -e
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STATE_FILE="$PROJECT_ROOT/.orchestrator/state.json"
+LOG_FILE="$PROJECT_ROOT/logs/orchestrator.log"
+
+# ログ関数
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+log "🎭 Kabuki Orchestrator 起動"
+
+# Zellijセッション内かチェック
+if [ -z "$ZELLIJ" ]; then
+    log "⚠️  Zellijセッション内で実行してください"
+    exit 1
+fi
+
+# jqのチェック
+if ! command -v jq &> /dev/null; then
+    log "❌ jq がインストールされていません"
+    exit 1
+fi
+
+# 既に起動中のエージェントを追跡
+declare -A RUNNING_AGENTS
+
+# エージェントを起動する関数
+launch_agent() {
+    local task_id=$1
+    local agent_type=$2
+    
+    log "🚀 Launching $agent_type for task $task_id"
+    
+    # Zellijの新しいペインでエージェントを起動
+    # ペイン名を設定して見分けやすく
+    zellij action new-pane --name "${agent_type}-${task_id}" --cwd "$PROJECT_ROOT" -- \
+        bash -c "./agents/launch_agent.sh '$agent_type' '$task_id'"
+    
+    RUNNING_AGENTS["$task_id"]="$agent_type"
+    
+    # state.jsonのステータスを更新
+    jq "(.tasks[] | select(.id==\"$task_id\")).status = \"running\"" "$STATE_FILE" > "$STATE_FILE.tmp" && mv "$STATE_FILE.tmp" "$STATE_FILE"
+    
+    log "✅ Agent $agent_type (task $task_id) launched in new pane"
+}
+
+# メインループ
+log "👀 Monitoring $STATE_FILE for pending tasks..."
+
+while true; do
+    # pending状態のタスクを取得
+    PENDING_TASKS=$(jq -r '.tasks[] | select(.status=="pending") | .id' "$STATE_FILE" 2>/dev/null || echo "")
+    
+    for task_id in $PENDING_TASKS; do
+        # 既に起動中ならスキップ
+        if [ -n "${RUNNING_AGENTS[$task_id]}" ]; then
+            continue
+        fi
+        
+        # タスク情報を取得
+        AGENT_TYPE=$(jq -r ".tasks[] | select(.id==\"$task_id\") | .agent_type" "$STATE_FILE")
+        
+        # 依存関係をチェック
+        DEPENDENCIES=$(jq -r ".tasks[] | select(.id==\"$task_id\") | .dependencies[]?" "$STATE_FILE")
+        ALL_DEPS_COMPLETED=true
+        
+        for dep in $DEPENDENCIES; do
+            DEP_STATUS=$(jq -r ".tasks[] | select(.id==\"$dep\") | .status" "$STATE_FILE")
+            if [ "$DEP_STATUS" != "completed" ]; then
+                ALL_DEPS_COMPLETED=false
+                log "⏸️  Task $task_id waiting for dependency $dep (status: $DEP_STATUS)"
+                break
+            fi
+        done
+        
+        # 依存関係が全て完了していればエージェントを起動
+        if [ "$ALL_DEPS_COMPLETED" = true ]; then
+            launch_agent "$task_id" "$AGENT_TYPE"
+        fi
+    done
+    
+    sleep 5
+done
